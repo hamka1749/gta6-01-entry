@@ -264,12 +264,44 @@ export function removePolice(scene, police) {
 }
 
 /**
+ * How fast a cruiser wants to go at `distance` from a target moving at
+ * `targetSpeed`: flat out while far away, then the target's speed plus a
+ * closing term once close. Near a stopped target it creeps to a 2 m hover
+ * (close enough to hold for a bust); near a moving one it holds a 4 m
+ * bumper gap — a cruiser that only slows down near a fast car falls off
+ * the bumper, and one that closes to 2 m drives straight through it
+ * (cars are 4.2 m long).
+ */
+function policeDesiredSpeed(distance, targetSpeed) {
+  if (distance >= 8) return POLICE_TOP_SPEED;
+  const hover = targetSpeed < 1 ? 2.0 : 4.0;
+  return Math.min(POLICE_TOP_SPEED, targetSpeed + Math.max(0, distance - hover) * 1.5);
+}
+
+/**
+ * Turn `car` toward the point (dx, dz) away, at the police turn rate.
+ * Returns the signed heading error, for the caller to use (a cruiser
+ * scraping a wall keeps turning the same way it already was).
+ */
+function policeSteer(car, dx, dz, dt) {
+  const targetHeading = Math.atan2(dx, dz);
+  let diff = targetHeading - car.heading;
+  while (diff > Math.PI) diff -= Math.PI * 2;
+  while (diff < -Math.PI) diff += Math.PI * 2;
+  const turn = Math.max(-1, Math.min(1, diff * 2));
+  const speedFactor = Math.min(1, Math.abs(car.speed) / 8);
+  car.heading += turn * POLICE_TURN_RATE * speedFactor * dt;
+  return diff;
+}
+
+/**
  * One police cruiser chasing `target` ({x, z, speed}) for `dt` seconds.
- * Steers straight at the target and closes in fast from afar, then eases
- * off near a slow target and parks beside it — a cruiser that only drives
- * through would never hold the player for a bust. A cruiser wedged on a
- * building for POLICE_STUCK_SECONDS sits still for POLICE_STUCK_HOLD, which
- * is how a good driver shakes one off. Returns the distance to the target.
+ * It steers straight at the target and closes in fast from afar, then
+ * eases off near a slow target and parks beside it — a cruiser that only
+ * drives through would never hold the player for a bust. A cruiser wedged
+ * on a building for POLICE_STUCK_SECONDS sits still for POLICE_STUCK_HOLD,
+ * then turns away, which is how a good driver shakes one off. Returns the
+ * distance to the target.
  */
 export function stepPolice(car, target, dt, colliders) {
   const dx = target.x - car.x;
@@ -283,24 +315,17 @@ export function stepPolice(car, target, dt, colliders) {
   car.lightBlue.material.emissiveIntensity = redOn ? 0.15 : 2.2;
   if (car.ramCooldown > 0) car.ramCooldown -= dt;
 
+  // Wedged: sit still for the hold, then turn away from the wall.
   if (car.stuckHold > 0) {
     car.stuckHold -= dt;
     car.speed = 0;
-    if (car.stuckHold <= 0) car.heading += 1.0; // turn away from the wall
+    if (car.stuckHold <= 0) car.heading += 1.0;
     spinWheels(car, dt);
     return distance;
   }
 
   const targetSpeed = target.speed ?? 0;
-  // Close in fast from afar; near the target, match its speed plus a
-  // closing term. Hover distance: park close beside a stopped target (so
-  // the bust can trigger inside 3.5 m), keep a bumper gap behind a moving
-  // one — a cruiser that only slows down near a fast car falls off the
-  // bumper, and one that closes to 2 m drives through it (cars are 4.2 m).
-  const hover = targetSpeed < 1 ? 2.0 : 4.0;
-  const desiredSpeed = distance < 8
-    ? Math.min(POLICE_TOP_SPEED, targetSpeed + Math.max(0, distance - hover) * 1.5)
-    : POLICE_TOP_SPEED;
+  const desiredSpeed = policeDesiredSpeed(distance, targetSpeed);
   if (distance < BUSTED_DISTANCE && targetSpeed < 1) {
     car.speed = Math.max(0, car.speed - POLICE_ACCEL * 2 * dt);
   } else if (car.speed < desiredSpeed) {
@@ -309,13 +334,7 @@ export function stepPolice(car, target, dt, colliders) {
     car.speed = Math.max(desiredSpeed, car.speed - POLICE_ACCEL * dt);
   }
 
-  const targetHeading = Math.atan2(dx, dz);
-  let diff = targetHeading - car.heading;
-  while (diff > Math.PI) diff -= Math.PI * 2;
-  while (diff < -Math.PI) diff += Math.PI * 2;
-  const turn = Math.max(-1, Math.min(1, diff * 2));
-  const speedFactor = Math.min(1, Math.abs(car.speed) / 8);
-  car.heading += turn * POLICE_TURN_RATE * speedFactor * dt;
+  const diff = policeSteer(car, dx, dz, dt);
 
   const nextX = car.x + Math.sin(car.heading) * car.speed * dt;
   const nextZ = car.z + Math.cos(car.heading) * car.speed * dt;
@@ -330,10 +349,9 @@ export function stepPolice(car, target, dt, colliders) {
   placeOnGround(car.mesh, car.x, car.z, car.heading);
   spinWheels(car, dt);
 
-  // Wedged? Barely moved for two seconds while trying to drive.
+  // Barely moved for two seconds while trying to drive: wedged.
   const moved = Math.hypot(car.x - car.lastX, car.z - car.lastZ);
-  const wantsToMove = desiredSpeed > 1;
-  if (wantsToMove && moved < 0.01 && car.speed < 0.5) {
+  if (desiredSpeed > 1 && moved < 0.01 && car.speed < 0.5) {
     car.stillTimer += dt;
     if (car.stillTimer >= POLICE_STUCK_SECONDS) {
       car.stuckHold = POLICE_STUCK_HOLD;
@@ -350,4 +368,12 @@ export function stepPolice(car, target, dt, colliders) {
 /** A road point behind `target`, for a fresh cruiser to spawn on. */
 export function policeSpawnPoint(target, distance) {
   return roadPointBehind(target.x, target.z, target.heading, distance);
+}
+
+/** The index of `car` in the traffic list, or -1 — how a save names the driven car. */
+export function carIndex(cars, car) {
+  for (let i = 0; i < cars.length; i += 1) {
+    if (cars[i] === car) return i;
+  }
+  return -1;
 }

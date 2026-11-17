@@ -39,9 +39,9 @@ export const CAR_REVERSE_SPEED = 8;
 export const CAR_TURN_RATE = 1.9; // radians per second at full lock
 export const ENTER_CAR_RANGE = 3.6;
 
-// Wanted level + police. Taking a car is stealing: the first star and the
-// first cruiser arrive with it. Stars rise while the chase runs; the cops
-// give up only when none of them is near the player for a while.
+// Wanted level + police chase. Stealing a car buys the first star and the
+// first cruiser; the longer the chase runs, the more stars (and cruisers)
+// it earns, and the cops only back off once every cruiser is far away.
 export const WANTED_MAX_STARS = 3;
 export const WANTED_STAR_SECONDS = 25; // seconds of wanted before another star
 export const WANTED_ESCAPE_DISTANCE = 60; // metres with no police near
@@ -56,6 +56,21 @@ export const POLICE_STUCK_HOLD = 5; // ...and the cruiser sits still this long
 export const BUSTED_HOLD_SECONDS = 3; // police beside a stopped car
 export const BUSTED_FOOT_SECONDS = 2; // police beside the player on foot
 export const BUSTED_DISTANCE = 3.5;
+
+// Saving: the run is written to localStorage, so a page reload can pick it
+// up where it stopped. The save holds positions and mission state only —
+// never the wall clock — so loading it back stays deterministic.
+export const SAVE_KEY = 'sunset-keys-save-v1';
+export const SAVE_VERSION = 1;
+export const SAVE_AUTOSAVE_SECONDS = 5; // seconds of play between autosaves
+
+// On-foot combat: a short-range shove. Close, quick and honest — it knocks
+// a pedestrian back and sends them running, nothing more.
+export const COMBAT_RANGE = 2.2; // metres, from the player's chest
+export const COMBAT_ARC = 1.1; // radians either side of the facing direction
+export const COMBAT_COOLDOWN = 0.8; // seconds between shoves
+export const COMBAT_KNOCKBACK = 6; // m/s shove velocity given to the target
+export const COMBAT_FLEE_SECONDS = 3; // how long a shoved pedestrian runs
 
 // Pedestrians: islanders strolling the sidewalks who scatter from cars.
 export const PEDESTRIAN_COUNT = 8;

@@ -295,32 +295,62 @@ export function sidewalkLoop(bx, bz) {
 }
 
 /**
- * A point on a road behind (x, z) along `heading`, about `distance` metres
- * back: step back from the target, then snap to the nearest road line, so a
- * police cruiser starts on a road with a clear run at the player instead of
- * across a block of buildings.
+ * A point on the target's own road, about `distance` metres behind
+ * (x, z) along `heading`. The heading's bigger component says which way
+ * the road runs; the cross-road coordinate snaps to the road line nearest
+ * the target — not the nearest line to the stepped-back point, which could
+ * shove the spawn onto a different road up to 20 m further away. A police
+ * cruiser spawned here starts on a road with a clear run at the player
+ * instead of across a block of buildings.
+ */
+/**
+ * A point on the target's own road, about `distance` metres behind
+ * (x, z) along `heading`. The heading's bigger component says which way
+ * the road runs; the cross-road coordinate snaps to the road line nearest
+ * the target — not the nearest line to the stepped-back point, which could
+ * shove the spawn onto a different road up to 20 m further away. A police
+ * cruiser spawned here starts on a road with a clear run at the player
+ * instead of across a block of buildings.
  */
 export function roadPointBehind(x, z, heading, distance) {
-  const bx = x - Math.sin(heading) * distance;
-  const bz = z - Math.cos(heading) * distance;
-  let bestLine = ROAD_LINES[0];
-  let bestDistance = Infinity;
-  let vertical = true;
-  for (const line of ROAD_LINES) {
-    if (Math.abs(line - bx) < bestDistance) {
-      bestDistance = Math.abs(line - bx);
-      bestLine = line;
-      vertical = true;
-    }
-    if (Math.abs(line - bz) < bestDistance) {
-      bestDistance = Math.abs(line - bz);
-      bestLine = line;
-      vertical = false;
+  // Mostly east-west travel means the target runs along a horizontal road
+  // (constant z); mostly north-south means a vertical one (constant x).
+  const eastWest = Math.abs(Math.sin(heading)) >= Math.abs(Math.cos(heading));
+  let line = ROAD_LINES[0];
+  let lineGap = Infinity;
+  for (const candidate of ROAD_LINES) {
+    // The cross-road coordinate: z for an east-west road, x for north-south.
+    const gap = Math.abs(candidate - (eastWest ? z : x));
+    if (gap < lineGap) {
+      lineGap = gap;
+      line = candidate;
     }
   }
-  const px = vertical ? bestLine : Math.max(-CITY_HALF + 8, Math.min(CITY_HALF - 8, bx));
-  const pz = vertical
-    ? Math.max(-CITY_HALF + 8, Math.min(CITY_HALF - 8, bz))
-    : bestLine;
-  return { x: px, z: pz };
+  const clamp = (v) => Math.max(-CITY_HALF + 8, Math.min(CITY_HALF - 8, v));
+  if (eastWest) return { x: clamp(x - Math.sin(heading) * distance), z: line };
+  return { x: line, z: clamp(z - Math.cos(heading) * distance) };
+}
+
+/**
+ * The closest point that lies on a road centre line to (x, z): the nearer
+ * of the nearest vertical road and the nearest horizontal road. Used to
+ * validate a loaded save — a position that drifted off the roads snaps
+ * back onto one instead of landing inside a building.
+ */
+export function nearestRoadPoint(x, z) {
+  let vertical = ROAD_LINES[0];
+  let verticalGap = Infinity;
+  let horizontal = ROAD_LINES[0];
+  let horizontalGap = Infinity;
+  for (const line of ROAD_LINES) {
+    if (Math.abs(line - x) < verticalGap) {
+      verticalGap = Math.abs(line - x);
+      vertical = line;
+    }
+    if (Math.abs(line - z) < horizontalGap) {
+      horizontalGap = Math.abs(line - z);
+      horizontal = line;
+    }
+  }
+  return verticalGap <= horizontalGap ? { x: vertical, z } : { x, z: horizontal };
 }
