@@ -14,6 +14,7 @@
   #hud { position: fixed; inset: 0; pointer-events: none; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.7); }
   #objective { position: absolute; top: 14px; left: 16px; font-size: 17px; font-weight: 600; background: rgba(10, 30, 45, .55); padding: 8px 12px; border-radius: 8px; max-width: 46vw; }
   #objective::before { content: "SUNSET KEYS · "; color: #ffd94d; }
+  #wanted { position: absolute; top: 64px; left: 16px; font-size: 26px; letter-spacing: 4px; color: #ff5a4d; background: rgba(10, 30, 45, .55); padding: 4px 12px; border-radius: 8px; }
   #minimap-wrap { position: absolute; top: 14px; right: 16px; background: rgba(10, 30, 45, .55); padding: 6px; border-radius: 8px; }
   #minimap { display: block; width: 180px; height: 180px; border-radius: 4px; }
   #minimap-label { text-align: center; font-size: 11px; letter-spacing: 2px; color: #cfe8f5; margin-top: 4px; }
@@ -24,6 +25,7 @@
   #controls b { color: #ffd94d; }
   #prompt { position: absolute; left: 50%; bottom: 22%; transform: translateX(-50%); font-size: 20px; font-weight: 700; background: rgba(10, 30, 45, .7); padding: 10px 18px; border-radius: 10px; border: 2px solid #ffd94d; }
   #banner { position: absolute; left: 50%; top: 18%; transform: translateX(-50%); font-size: 34px; font-weight: 800; color: #ffd94d; background: rgba(10, 30, 45, .7); padding: 12px 24px; border-radius: 12px; }
+  #banner.fail { color: #ff6b5e; border: 2px solid #ff6b5e; }
 
   /* Start screen */
   #start-screen { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: linear-gradient(180deg, rgba(8, 28, 44, .25) 0%, rgba(8, 28, 44, .78) 100%); pointer-events: auto; }
@@ -45,7 +47,8 @@
 <canvas id="game" aria-label="Sunset Keys: explore Palmera Keys on foot and by car"></canvas>
 
 <div id="hud">
-  <div id="objective">★ Find a car, then drive to the Marina — follow the gold beacon</div>
+  <div id="objective">★ Steal a car, lose the cops, and reach the Marina</div>
+  <div id="wanted" class="hidden"></div>
   <div id="minimap-wrap">
     <canvas id="minimap" width="180" height="180"></canvas>
     <div id="minimap-label">PALMERA KEYS</div>
@@ -53,7 +56,7 @@
   <div id="speed"><span id="speed-value">—</span><div id="speed-label">ON FOOT</div></div>
   <div id="controls">
     <b>W A S D</b> move &nbsp; <b>Shift</b> run &nbsp; <b>Mouse drag</b> camera<br>
-    <b>E</b> get in / out of a car &nbsp; <b>Space</b> brake &nbsp; <b>R</b> reset
+    <b>E</b> steal / leave a car &nbsp; <b>Space</b> brake &nbsp; <b>H</b> horn &nbsp; <b>R</b> reset
   </div>
   <div id="prompt" class="hidden"></div>
   <div id="banner" class="hidden"></div>
@@ -63,13 +66,13 @@
   <div id="start-card">
     <h1 id="start-title">SUNSET KEYS</h1>
     <p id="start-city">Welcome to Palmera Keys</p>
-    <p id="start-story">One sun-soaked island. One borrowed car. The whole of Palmera Keys is
-    yours to explore — cruise the boulevards, cut through the palm-lined blocks,
-    and reach the Marina before the day is done.</p>
+    <p id="start-story">One sun-soaked island. One borrowed car — and the whole Palmera Keys
+    police force behind you. Steal a ride, lose the cops, and reach the
+    Marina before they hold you. Get caught standing still and it is over.</p>
     <div id="start-controls">
       <b>W A S D</b> — walk / drive &nbsp;·&nbsp; <b>Shift</b> — run<br>
       <b>Mouse drag</b> — look around &nbsp;·&nbsp; <b>Wheel</b> — zoom<br>
-      <b>E</b> — get in / out of a car &nbsp;·&nbsp; <b>Space</b> — brake &nbsp;·&nbsp; <b>R</b> — reset
+      <b>E</b> — steal / leave a car &nbsp;·&nbsp; <b>Space</b> — brake &nbsp;·&nbsp; <b>H</b> — horn &nbsp;·&nbsp; <b>R</b> — reset
     </div>
     <button id="play-button" type="button">▶ &nbsp;PLAY</button>
   </div>

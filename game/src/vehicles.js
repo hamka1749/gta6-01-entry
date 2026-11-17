@@ -6,10 +6,11 @@
 
 import * as THREE from 'three';
 import {
-  CAR_ACCEL, CAR_BRAKE, CAR_COLORS, CAR_REVERSE_SPEED, CAR_TOP_SPEED, CAR_TURN_RATE,
-  ENTER_CAR_RANGE, ROAD_HALF, ROAD_SPACING,
+  BUSTED_DISTANCE, CAR_ACCEL, CAR_BRAKE, CAR_COLORS, CAR_REVERSE_SPEED, CAR_TOP_SPEED,
+  CAR_TURN_RATE, ENTER_CAR_RANGE, POLICE_ACCEL, POLICE_STUCK_HOLD, POLICE_STUCK_SECONDS,
+  POLICE_TOP_SPEED, POLICE_TURN_RATE, ROAD_HALF, ROAD_SPACING,
 } from './config.js';
-import { ROAD_LINES } from './city.js';
+import { ROAD_LINES, roadPointBehind } from './city.js';
 import { isBlocked } from './city.js';
 import { pick, range } from './rng.js';
 
@@ -207,4 +208,146 @@ export function nearestCar(cars, x, z) {
     }
   }
   return bestDistance <= ENTER_CAR_RANGE ? best : null;
+}
+
+/**
+ * A police cruiser: a dark car with a white roof and a light bar whose red
+ * and blue lenses flash on a fixed simulation phase (never the wall clock,
+ * so the chase screenshot stages the same frame every time).
+ */
+export function buildPoliceMesh() {
+  const base = buildCarMesh(0x22242a);
+  const roofMat = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.4, metalness: 0.3 });
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(1.74, 0.1, 2.0), roofMat);
+  roof.position.set(0, 1.42, -0.25);
+  base.group.add(roof);
+
+  const barMat = new THREE.MeshStandardMaterial({ color: 0x1c1e24, roughness: 0.5 });
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.12, 0.3), barMat);
+  bar.position.set(0, 1.52, -0.25);
+  base.group.add(bar);
+
+  const lightRedMat = new THREE.MeshStandardMaterial({
+    color: 0xd21f1f, emissive: 0xff2020, emissiveIntensity: 2.2,
+  });
+  const lightRed = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.14, 0.32), lightRedMat);
+  lightRed.position.set(-0.28, 1.53, -0.25);
+  base.group.add(lightRed);
+
+  const lightBlueMat = new THREE.MeshStandardMaterial({
+    color: 0x2050d2, emissive: 0x2050ff, emissiveIntensity: 0.15,
+  });
+  const lightBlue = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.14, 0.32), lightBlueMat);
+  lightBlue.position.set(0.28, 1.53, -0.25);
+  base.group.add(lightBlue);
+
+  return { ...base, lightRed, lightBlue };
+}
+
+/** Spawn one police cruiser at (x, z), facing `heading`. */
+export function createPolice(scene, x, z, heading) {
+  const mesh = buildPoliceMesh();
+  placeOnGround(mesh.group, x, z, heading);
+  scene.add(mesh.group);
+  return {
+    mesh: mesh.group, wheels: mesh.wheels, lightRed: mesh.lightRed, lightBlue: mesh.lightBlue,
+    x, z, heading, speed: 0, driven: false, traffic: false, loop: null, loopDistance: 0,
+    police: true, lightPhase: 0, stuckTimer: 0, stuckHold: 0, ramCooldown: 0,
+    lastX: x, lastZ: z, stillTimer: 0,
+  };
+}
+
+/** Remove every police cruiser from the scene (wanted cleared, mission done). */
+export function removePolice(scene, police) {
+  for (const car of police) scene.remove(car.mesh);
+  police.length = 0;
+}
+
+/**
+ * One police cruiser chasing `target` ({x, z, speed}) for `dt` seconds.
+ * Steers straight at the target and closes in fast from afar, then eases
+ * off near a slow target and parks beside it — a cruiser that only drives
+ * through would never hold the player for a bust. A cruiser wedged on a
+ * building for POLICE_STUCK_SECONDS sits still for POLICE_STUCK_HOLD, which
+ * is how a good driver shakes one off. Returns the distance to the target.
+ */
+export function stepPolice(car, target, dt, colliders) {
+  const dx = target.x - car.x;
+  const dz = target.z - car.z;
+  const distance = Math.hypot(dx, dz);
+
+  // Flash the light bar: red and blue alternate every 0.35 s of sim time.
+  car.lightPhase = (car.lightPhase + dt) % 0.7;
+  const redOn = car.lightPhase < 0.35;
+  car.lightRed.material.emissiveIntensity = redOn ? 2.2 : 0.15;
+  car.lightBlue.material.emissiveIntensity = redOn ? 0.15 : 2.2;
+  if (car.ramCooldown > 0) car.ramCooldown -= dt;
+
+  if (car.stuckHold > 0) {
+    car.stuckHold -= dt;
+    car.speed = 0;
+    if (car.stuckHold <= 0) car.heading += 1.0; // turn away from the wall
+    spinWheels(car, dt);
+    return distance;
+  }
+
+  const targetSpeed = target.speed ?? 0;
+  // Close in fast from afar; near the target, match its speed plus a
+  // closing term. Hover distance: park close beside a stopped target (so
+  // the bust can trigger inside 3.5 m), keep a bumper gap behind a moving
+  // one — a cruiser that only slows down near a fast car falls off the
+  // bumper, and one that closes to 2 m drives through it (cars are 4.2 m).
+  const hover = targetSpeed < 1 ? 2.0 : 4.0;
+  const desiredSpeed = distance < 8
+    ? Math.min(POLICE_TOP_SPEED, targetSpeed + Math.max(0, distance - hover) * 1.5)
+    : POLICE_TOP_SPEED;
+  if (distance < BUSTED_DISTANCE && targetSpeed < 1) {
+    car.speed = Math.max(0, car.speed - POLICE_ACCEL * 2 * dt);
+  } else if (car.speed < desiredSpeed) {
+    car.speed = Math.min(desiredSpeed, car.speed + POLICE_ACCEL * dt);
+  } else {
+    car.speed = Math.max(desiredSpeed, car.speed - POLICE_ACCEL * dt);
+  }
+
+  const targetHeading = Math.atan2(dx, dz);
+  let diff = targetHeading - car.heading;
+  while (diff > Math.PI) diff -= Math.PI * 2;
+  while (diff < -Math.PI) diff += Math.PI * 2;
+  const turn = Math.max(-1, Math.min(1, diff * 2));
+  const speedFactor = Math.min(1, Math.abs(car.speed) / 8);
+  car.heading += turn * POLICE_TURN_RATE * speedFactor * dt;
+
+  const nextX = car.x + Math.sin(car.heading) * car.speed * dt;
+  const nextZ = car.z + Math.cos(car.heading) * car.speed * dt;
+  if (!isBlocked(colliders, nextX, nextZ, 1.6)) {
+    car.x = nextX;
+    car.z = nextZ;
+  } else {
+    // Scraping a wall: lose speed, keep turning toward the target.
+    car.speed *= 0.5;
+    car.heading += 0.6 * dt * (diff >= 0 ? 1 : -1);
+  }
+  placeOnGround(car.mesh, car.x, car.z, car.heading);
+  spinWheels(car, dt);
+
+  // Wedged? Barely moved for two seconds while trying to drive.
+  const moved = Math.hypot(car.x - car.lastX, car.z - car.lastZ);
+  const wantsToMove = desiredSpeed > 1;
+  if (wantsToMove && moved < 0.01 && car.speed < 0.5) {
+    car.stillTimer += dt;
+    if (car.stillTimer >= POLICE_STUCK_SECONDS) {
+      car.stuckHold = POLICE_STUCK_HOLD;
+      car.stillTimer = 0;
+    }
+  } else {
+    car.stillTimer = 0;
+  }
+  car.lastX = car.x;
+  car.lastZ = car.z;
+  return distance;
+}
+
+/** A road point behind `target`, for a fresh cruiser to spawn on. */
+export function policeSpawnPoint(target, distance) {
+  return roadPointBehind(target.x, target.z, target.heading, distance);
 }

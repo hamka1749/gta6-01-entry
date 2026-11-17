@@ -1,16 +1,18 @@
-// SUNSET KEYS — the deterministic screenshot poses behind ?shot=start|play|end.
+// SUNSET KEYS — the deterministic screenshot poses behind ?shot=start|play|chase|end.
 // Each pose sets up a fixed scene from the seeded world and then advances it
 // a fixed number of fixed-size steps, so the same seed always renders the
 // same frame: no input, no wall clock, no randomness at shot time.
 //   start — the title screen over the island, the player on a sidewalk.
 //   play  — mid-drive: the player has taken a car and is cruising a road.
+//   chase — the getaway: a stolen car at speed, two cruisers in pursuit.
 //   end   — the Marina objective complete, player beside the car on the pier.
 
-import { CAMERA_DISTANCE, MARINA } from './config.js';
+import { CAMERA_DISTANCE, MARINA, MISSION_WANTED_TEXT } from './config.js';
 import { nearestCar, stepDrivenCar, stepTraffic } from './vehicles.js';
 
 const STEP = 1 / 60;
 const PLAY_STEPS = 240; // four seconds of driving, fixed
+const CHASE_STEPS = 240; // four seconds of chase, fixed
 
 /** Drive the car straight along its road for a fixed number of steps. */
 function driveForward(game, steps) {
@@ -18,6 +20,7 @@ function driveForward(game, steps) {
   for (let i = 0; i < steps; i += 1) {
     stepDrivenCar(game.driving, STEP, move, game.colliders);
     stepTraffic(game.cars, STEP);
+    game.stepSystems(STEP);
   }
 }
 
@@ -52,9 +55,34 @@ export function stageShot(name, game) {
     game.startPlaying();
     enterNearestCar(game);
     if (game.driving) driveForward(game, PLAY_STEPS);
-    game.hud.setObjective('★ Drive to the Marina — follow the gold beacon');
+    game.hud.setObjective(MISSION_WANTED_TEXT);
     game.camera.snap({ x: game.driving.x, z: game.driving.z, driving: true }, 1);
     return 3;
+  }
+  if (name === 'chase') {
+    game.startPlaying();
+    enterNearestCar(game);
+    if (game.driving) {
+      // A two-star chase for the shot: the steal already brought one
+      // cruiser; a second one joins right behind the getaway car, rolling.
+      game.wanted = 2;
+      game.hud.setWanted(2);
+      game.addPoliceAt(
+        game.driving.x - Math.sin(game.driving.heading) * 16,
+        game.driving.z - Math.cos(game.driving.heading) * 16,
+        game.driving.heading,
+        18,
+      );
+      driveForward(game, CHASE_STEPS);
+      game.hud.setObjective(MISSION_WANTED_TEXT);
+      // Side view: the getaway car ahead, the cruisers trailing behind it.
+      game.camera.state.yaw = game.driving.heading + Math.PI / 2;
+      game.camera.state.pitch = 0.32;
+      game.camera.state.distance = CAMERA_DISTANCE + 4;
+      game.camera.snap({ x: game.driving.x, z: game.driving.z, driving: true }, 1);
+      return 3;
+    }
+    // No car found (should not happen): fall through to the start pose.
   }
   if (name === 'end') {
     game.startPlaying();

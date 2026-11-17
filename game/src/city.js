@@ -282,3 +282,45 @@ export function isBlocked(colliders, x, z, radius) {
   }
   return false;
 }
+
+/** The four sidewalk corners of one block, for pedestrians to walk around. */
+export function sidewalkLoop(bx, bz) {
+  const edge = BLOCK_SIZE / 2 - 1.5;
+  return [
+    { x: bx - edge, z: bz - edge },
+    { x: bx + edge, z: bz - edge },
+    { x: bx + edge, z: bz + edge },
+    { x: bx - edge, z: bz + edge },
+  ];
+}
+
+/**
+ * A point on a road behind (x, z) along `heading`, about `distance` metres
+ * back: step back from the target, then snap to the nearest road line, so a
+ * police cruiser starts on a road with a clear run at the player instead of
+ * across a block of buildings.
+ */
+export function roadPointBehind(x, z, heading, distance) {
+  const bx = x - Math.sin(heading) * distance;
+  const bz = z - Math.cos(heading) * distance;
+  let bestLine = ROAD_LINES[0];
+  let bestDistance = Infinity;
+  let vertical = true;
+  for (const line of ROAD_LINES) {
+    if (Math.abs(line - bx) < bestDistance) {
+      bestDistance = Math.abs(line - bx);
+      bestLine = line;
+      vertical = true;
+    }
+    if (Math.abs(line - bz) < bestDistance) {
+      bestDistance = Math.abs(line - bz);
+      bestLine = line;
+      vertical = false;
+    }
+  }
+  const px = vertical ? bestLine : Math.max(-CITY_HALF + 8, Math.min(CITY_HALF - 8, bx));
+  const pz = vertical
+    ? Math.max(-CITY_HALF + 8, Math.min(CITY_HALF - 8, bz))
+    : bestLine;
+  return { x: px, z: pz };
+}

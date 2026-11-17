@@ -70,12 +70,23 @@ export function createPlayer(scene) {
     },
     reset() {
       this.teleport(SPAWN.x, SPAWN.z, SPAWN.heading);
+      this.lowerArms();
     },
     show() {
       parts.group.visible = true;
     },
     hide() {
       parts.group.visible = false;
+    },
+    /** Hands up: the busted pose, held until the run resets. */
+    raiseArms() {
+      parts.leftArm.rotation.x = -2.4;
+      parts.rightArm.rotation.x = -2.4;
+    },
+    /** Back to the normal swing (also called by reset). */
+    lowerArms() {
+      parts.leftArm.rotation.x = 0;
+      parts.rightArm.rotation.x = 0;
     },
   };
 }

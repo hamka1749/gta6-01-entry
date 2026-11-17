@@ -39,6 +39,45 @@ export const CAR_REVERSE_SPEED = 8;
 export const CAR_TURN_RATE = 1.9; // radians per second at full lock
 export const ENTER_CAR_RANGE = 3.6;
 
+// Wanted level + police. Taking a car is stealing: the first star and the
+// first cruiser arrive with it. Stars rise while the chase runs; the cops
+// give up only when none of them is near the player for a while.
+export const WANTED_MAX_STARS = 3;
+export const WANTED_STAR_SECONDS = 25; // seconds of wanted before another star
+export const WANTED_ESCAPE_DISTANCE = 60; // metres with no police near
+export const WANTED_ESCAPE_SECONDS = 10; // ...for this long, and a star drops
+export const POLICE_TOP_SPEED = 30; // m/s, a touch faster than the player's car
+export const POLICE_ACCEL = 14;
+export const POLICE_TURN_RATE = 2.3; // radians per second at full lock
+export const POLICE_RAM_DISTANCE = 4.2; // centre-to-centre bumper contact (cars are ~4.2 m long)
+export const POLICE_SPAWN_DISTANCE = 45; // metres from the player, on a road
+export const POLICE_STUCK_SECONDS = 2; // wedged on a building this long...
+export const POLICE_STUCK_HOLD = 5; // ...and the cruiser sits still this long
+export const BUSTED_HOLD_SECONDS = 3; // police beside a stopped car
+export const BUSTED_FOOT_SECONDS = 2; // police beside the player on foot
+export const BUSTED_DISTANCE = 3.5;
+
+// Pedestrians: islanders strolling the sidewalks who scatter from cars.
+export const PEDESTRIAN_COUNT = 8;
+export const PEDESTRIAN_WALK_SPEED = 1.3;
+export const PEDESTRIAN_FLEE_SPEED = 2.6;
+export const PEDESTRIAN_FLEE_DISTANCE = 6;
+export const PEDESTRIAN_FLEE_SECONDS = 2;
+
+// Quality fallback: a weak machine (SwiftShader runs ~1 fps at 1280x720 with
+// 2048 shadow maps) gets smaller shadows instead of a slideshow. Rendering
+// only — the simulation keeps its fixed 1/60 s steps either way.
+export const SHADOW_MAP_HIGH = 2048;
+export const SHADOW_MAP_LOW = 1024;
+export const QUALITY_SAMPLE_FRAMES = 90;
+export const QUALITY_SLOW_FRAME_MS = 40; // average frame time that triggers low
+
+// The mission: steal a car, lose the cops, reach the Marina.
+export const MISSION_TEXT = '★ Steal a car, lose the cops, and reach the Marina';
+export const MISSION_WANTED_TEXT = '★ WANTED — lose the cops and reach the Marina';
+export const MISSION_CLEAN_TEXT = '★ Clean getaway — reach the Marina';
+export const MISSION_DONE_TEXT = '★ Getaway complete — Palmera Keys is yours to explore.';
+
 // Third-person camera.
 export const CAMERA_DISTANCE = 7.5;
 export const CAMERA_MIN_DISTANCE = 4;

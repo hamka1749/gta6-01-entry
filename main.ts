@@ -6,11 +6,16 @@
 // output/dossier.json, the summary the judge reads, using the kit's vendored
 // make.fun library. It runs twice and writes identical bytes both times.
 //
+// The CP2 core loop ships four screenshots (start, play, chase, end): the
+// chase shot is the police pursuit, staged by game/src/shots.js from the
+// same seed as the rest. A hand-in with no screenshots at all is refused
+// here, so a broken screenshot step fails loudly instead of silently.
+//
 // Play it locally with `node serve.ts`, then open http://localhost:8080.
 // Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 
-import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-game.ts';
@@ -23,6 +28,13 @@ cpSync(join(repoRoot, 'game'), join(outputDir, 'game'), { recursive: true });
 mkdirSync(join(outputDir, 'screenshots'), { recursive: true });
 if (existsSync(join(repoRoot, 'screenshots'))) {
   cpSync(join(repoRoot, 'screenshots'), join(outputDir, 'screenshots'), { recursive: true });
+}
+
+// The entry is judged on its screenshots: refuse a hand-in that has none.
+const shotCount = readdirSync(join(outputDir, 'screenshots'))
+  .filter((name) => /\.(jpe?g|png|webp)$/i.test(name)).length;
+if (shotCount === 0) {
+  throw new Error('no screenshots in screenshots/ — run the shot poses first');
 }
 
 // The scorer's own caps (reference/gate.json): only text_max_bytes shapes the

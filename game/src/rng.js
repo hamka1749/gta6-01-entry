@@ -30,3 +30,8 @@ export function range(rng, min, max) {
 export function intRange(rng, min, max) {
   return min + Math.floor(rng() * (max - min + 1));
 }
+
+// True with the given probability, from the seeded generator.
+export function chance(rng, probability) {
+  return rng() < probability;
+}

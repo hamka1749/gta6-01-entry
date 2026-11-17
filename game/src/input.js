@@ -5,6 +5,7 @@
 
 export const ACTION_ENTER = 1;
 export const ACTION_RESET = 2;
+export const ACTION_HORN = 4;
 
 const FORWARD = new Set(['KeyW', 'ArrowUp']);
 const BACK = new Set(['KeyS', 'ArrowDown']);
@@ -14,6 +15,7 @@ const RUN = new Set(['ShiftLeft', 'ShiftRight']);
 const BRAKE = new Set(['Space']);
 const ENTER = new Set(['KeyE']);
 const RESET = new Set(['KeyR']);
+const HORN = new Set(['KeyH']);
 
 export function createInput(canvas) {
   const held = new Set();
@@ -30,6 +32,8 @@ export function createInput(canvas) {
       if (!event.repeat) actions |= ACTION_ENTER;
     } else if (RESET.has(event.code)) {
       if (!event.repeat) actions |= ACTION_RESET;
+    } else if (HORN.has(event.code)) {
+      if (!event.repeat) actions |= ACTION_HORN;
     } else if (
       FORWARD.has(event.code) || BACK.has(event.code) || LEFT.has(event.code) ||
       RIGHT.has(event.code) || RUN.has(event.code) || BRAKE.has(event.code)

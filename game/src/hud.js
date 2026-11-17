@@ -7,6 +7,7 @@ import { CITY_NAME, GAME_TITLE } from './config.js';
 export function createHud() {
   const root = document.getElementById('hud');
   const objectiveEl = document.getElementById('objective');
+  const wantedEl = document.getElementById('wanted');
   const speedEl = document.getElementById('speed-value');
   const speedLabelEl = document.getElementById('speed-label');
   const promptEl = document.getElementById('prompt');
@@ -33,6 +34,11 @@ export function createHud() {
     setObjective(text) {
       objectiveEl.textContent = text;
     },
+    /** Wanted stars: filled ★ for the level, empty ☆ up to three. Hidden at zero. */
+    setWanted(stars) {
+      wantedEl.textContent = stars > 0 ? '★'.repeat(stars) + '☆'.repeat(3 - stars) : '';
+      wantedEl.classList.toggle('hidden', stars === 0);
+    },
     /** Speed in km/h; while on foot the label reads ON FOOT. */
     setSpeed(kmh, driving) {
       speedEl.textContent = driving ? String(Math.round(kmh)) : '—';
@@ -48,9 +54,17 @@ export function createHud() {
     showBanner(text) {
       bannerEl.textContent = text;
       bannerEl.classList.remove('hidden');
+      bannerEl.classList.remove('fail');
+    },
+    /** The same banner in red, for the busted (mission failed) state. */
+    showFailBanner(text) {
+      bannerEl.textContent = text;
+      bannerEl.classList.remove('hidden');
+      bannerEl.classList.add('fail');
     },
     hideBanner() {
       bannerEl.classList.add('hidden');
+      bannerEl.classList.remove('fail');
     },
   };
 }

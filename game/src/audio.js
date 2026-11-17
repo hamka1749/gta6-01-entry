@@ -9,6 +9,11 @@ export function createAudio() {
   let engineOsc = null;
   let engineGain = null;
   let engineFilter = null;
+  // The police siren: one square oscillator whose pitch alternates on the
+  // simulation clock the loop passes in, so the sound never needs its own
+  // timer. Silent until the wanted level is above zero.
+  let sirenOsc = null;
+  let sirenGain = null;
 
   function ensureContext() {
     if (context) return context;
@@ -74,6 +79,55 @@ export function createAudio() {
     objectiveDone() {
       blip(660, 0.18, 'triangle', 0.16);
       setTimeout(() => blip(990, 0.3, 'triangle', 0.16), 160);
+    },
+    /** Two short horn toots (H key). */
+    honk() {
+      blip(370, 0.12, 'square', 0.08);
+      setTimeout(() => blip(370, 0.14, 'square', 0.08), 140);
+    },
+    /** Rising sting when another wanted star appears. */
+    wantedUp() {
+      blip(440, 0.12, 'square', 0.1);
+      setTimeout(() => blip(587, 0.18, 'square', 0.1), 120);
+    },
+    /** The thud of a police cruiser ramming the player's car. */
+    thud() {
+      blip(90, 0.18, 'sine', 0.22);
+    },
+    /** Descending sting when the cops finally hold the player. */
+    busted() {
+      blip(392, 0.2, 'triangle', 0.16);
+      setTimeout(() => blip(311, 0.2, 'triangle', 0.16), 180);
+      setTimeout(() => blip(233, 0.35, 'triangle', 0.16), 360);
+    },
+    /**
+     * Police siren, driven by the loop: `on` while wanted, `distance` to
+     * the nearest cruiser (closer is louder), `simTime` for the two-tone
+     * alternation. A game with no audio permission still plays silently.
+     */
+    setSiren(on, distance, simTime) {
+      if (!on) {
+        if (sirenGain) sirenGain.gain.setTargetAtTime(0, context.currentTime, 0.1);
+        return;
+      }
+      if (!ensureContext()) return;
+      try {
+        if (!sirenOsc) {
+          sirenOsc = context.createOscillator();
+          sirenOsc.type = 'square';
+          sirenOsc.frequency.value = 700;
+          sirenGain = context.createGain();
+          sirenGain.gain.value = 0;
+          sirenOsc.connect(sirenGain).connect(context.destination);
+          sirenOsc.start();
+        }
+        const tone = Math.floor(simTime / 0.35) % 2 === 0 ? 700 : 950;
+        sirenOsc.frequency.setTargetAtTime(tone, context.currentTime, 0.05);
+        const loudness = Math.max(0, 0.06 - Math.max(0, distance - 10) * 0.001);
+        sirenGain.gain.setTargetAtTime(loudness, context.currentTime, 0.2);
+      } catch {
+        // Sound is garnish: never let it break the game.
+      }
     },
   };
 }

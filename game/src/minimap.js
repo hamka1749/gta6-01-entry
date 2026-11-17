@@ -67,6 +67,25 @@ export function createMinimap() {
     }
   }
 
+  /** Police cruisers as blue dots; pedestrians as small pale dots. */
+  function drawPolice(police) {
+    for (const car of police) {
+      ctx.fillStyle = '#4d8dff';
+      ctx.beginPath();
+      ctx.arc(toMap(car.x), toMap(car.z), 3.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function drawPedestrians(pedestrians) {
+    ctx.fillStyle = '#cfe8f5';
+    for (const ped of pedestrians) {
+      ctx.beginPath();
+      ctx.arc(toMap(ped.x), toMap(ped.z), 1.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
   function drawPlayer(player, driving) {
     const x = toMap(player.x);
     const y = toMap(player.z);
@@ -89,10 +108,13 @@ export function createMinimap() {
   }
 
   return {
-    draw(player, cars, driving) {
+    /** `police` and `pedestrians` are optional: the title screen passes none. */
+    draw(player, cars, driving, police = [], pedestrians = []) {
       drawRoads();
       drawMarina();
       drawCars(cars);
+      drawPolice(police);
+      drawPedestrians(pedestrians);
       drawPlayer(player, driving);
     },
   };

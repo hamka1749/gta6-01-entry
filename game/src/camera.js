@@ -16,6 +16,10 @@ export function createCamera(renderer) {
     distance: CAMERA_DISTANCE,
     position: new THREE.Vector3(0, 10, 0),
   };
+  // Impact shake: a decaying jolt fed by the simulation clock, never the
+  // wall clock, so a staged screenshot renders the same frame every time.
+  let shake = 0;
+  let shakeTime = 0;
 
   function updateSize() {
     const width = renderer.domElement.clientWidth || window.innerWidth;
@@ -29,6 +33,10 @@ export function createCamera(renderer) {
     camera,
     state,
     resize: updateSize,
+    /** A jolt from a police ram: `amount` 0..1, decays over about a second. */
+    addShake(amount) {
+      shake = Math.min(1, shake + amount);
+    },
     /** Apply a mouse drag: orbit yaw and pitch, wheel zooms. */
     applyDrag(drag) {
       state.yaw -= drag.x * 0.005;
@@ -50,6 +58,13 @@ export function createCamera(renderer) {
       const blend = dt >= 1 ? 1 : 1 - Math.exp(-dt * 10);
       state.position.lerp(wanted, blend);
       camera.position.copy(state.position);
+      // Shake rides on the sim clock: two sines at unrelated frequencies.
+      shakeTime += dt;
+      shake = Math.max(0, shake - dt * 1.2);
+      if (shake > 0.001) {
+        camera.position.x += Math.sin(shakeTime * 61.7) * shake * 0.3;
+        camera.position.y += Math.sin(shakeTime * 47.3 + 1.7) * shake * 0.2;
+      }
       camera.lookAt(target.x, targetHeight + 1.0, target.z);
     },
     /** Snap the camera to its wanted spot (used by screenshot poses). */
