@@ -8,8 +8,10 @@
 //
 // The CP2 core loop ships four screenshots (start, play, chase, end): the
 // chase shot is the police pursuit, staged by game/src/shots.js from the
-// same seed as the rest. A hand-in with no screenshots at all is refused
-// here, so a broken screenshot step fails loudly instead of silently.
+// same seed as the rest. CP3 adds save/load (X key, Continue on the title
+// screen), a stable R reset from every end state, and the on-foot shove (F).
+// A hand-in with no screenshots at all is refused here, so a broken
+// screenshot step fails loudly instead of silently.
 //
 // Play it locally with `node serve.ts`, then open http://localhost:8080.
 // Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
@@ -31,10 +33,12 @@ if (existsSync(join(repoRoot, 'screenshots'))) {
 }
 
 // The entry is judged on its screenshots: refuse a hand-in that has none.
+// The gate takes 3 to 4, so a hand-in outside that range is refused here
+// too — a fifth stray file in screenshots/ must fail loudly, not silently.
 const shotCount = readdirSync(join(outputDir, 'screenshots'))
   .filter((name) => /\.(jpe?g|png|webp)$/i.test(name)).length;
-if (shotCount === 0) {
-  throw new Error('no screenshots in screenshots/ — run the shot poses first');
+if (shotCount < 3 || shotCount > 4) {
+  throw new Error(`need 3 or 4 screenshots in screenshots/ — found ${shotCount}`);
 }
 
 // The scorer's own caps (reference/gate.json): only text_max_bytes shapes the

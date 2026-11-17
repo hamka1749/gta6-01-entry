@@ -17,8 +17,6 @@ export function createMinimap() {
   const toMap = (world) => (world + CITY_HALF) * scale;
 
   function drawRoads() {
-    ctx.fillStyle = '#1d2b36';
-    ctx.fillRect(0, 0, MAP_SIZE, MAP_SIZE);
     ctx.fillStyle = '#274b63'; // ocean ring around the island
     ctx.fillRect(0, 0, MAP_SIZE, MAP_SIZE);
     ctx.fillStyle = '#3f6b52'; // island ground
@@ -44,9 +42,18 @@ export function createMinimap() {
     }
   }
 
-  function drawMarina() {
+  function drawMarina(simTime, objectiveActive) {
     const x = toMap(MARINA.x);
     const y = toMap(MARINA.z);
+    // While the getaway is still on, a gold ring breathes around the
+    // Marina on the simulation clock, so the goal is findable at a glance.
+    if (objectiveActive) {
+      ctx.strokeStyle = '#ffd94d';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x, y, 9 + Math.sin(simTime * 2) * 2, 0, Math.PI * 2);
+      ctx.stroke();
+    }
     ctx.fillStyle = '#ffd94d';
     ctx.beginPath();
     ctx.arc(x, y, 6, 0, Math.PI * 2);
@@ -108,10 +115,14 @@ export function createMinimap() {
   }
 
   return {
-    /** `police` and `pedestrians` are optional: the title screen passes none. */
-    draw(player, cars, driving, police = [], pedestrians = []) {
+    /**
+     * `police` and `pedestrians` are optional: the title screen passes
+     * none. `simTime` drives the objective ring; `objectiveActive` says
+     * whether the getaway is still on.
+     */
+    draw(player, cars, driving, police = [], pedestrians = [], simTime = 0, objectiveActive = false) {
       drawRoads();
-      drawMarina();
+      drawMarina(simTime, objectiveActive);
       drawCars(cars);
       drawPolice(police);
       drawPedestrians(pedestrians);

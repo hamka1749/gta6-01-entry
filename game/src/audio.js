@@ -53,6 +53,11 @@ export function createAudio() {
     }
   }
 
+  /** A second blip after `delay` ms: the two-note sounds share this. */
+  function blipLater(frequency, duration, type, volume, delay) {
+    setTimeout(() => blip(frequency, duration, type, volume), delay);
+  }
+
   return {
     /** Call from the Play click: unlocks audio and starts the engine hum. */
     unlock() {
@@ -93,6 +98,16 @@ export function createAudio() {
     /** The thud of a police cruiser ramming the player's car. */
     thud() {
       blip(90, 0.18, 'sine', 0.22);
+    },
+    /** The thwack of a shove landing on a pedestrian. */
+    thwack() {
+      blip(160, 0.1, 'triangle', 0.2);
+      blipLater(90, 0.12, 'sine', 0.18, 40);
+    },
+    /** Two soft blips when the run is saved. */
+    saved() {
+      blip(880, 0.1, 'sine', 0.1);
+      blipLater(1174, 0.14, 'sine', 0.1, 110);
     },
     /** Descending sting when the cops finally hold the player. */
     busted() {

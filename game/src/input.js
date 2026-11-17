@@ -6,6 +6,8 @@
 export const ACTION_ENTER = 1;
 export const ACTION_RESET = 2;
 export const ACTION_HORN = 4;
+export const ACTION_PUNCH = 8;
+export const ACTION_SAVE = 16;
 
 const FORWARD = new Set(['KeyW', 'ArrowUp']);
 const BACK = new Set(['KeyS', 'ArrowDown']);
@@ -16,6 +18,8 @@ const BRAKE = new Set(['Space']);
 const ENTER = new Set(['KeyE']);
 const RESET = new Set(['KeyR']);
 const HORN = new Set(['KeyH']);
+const PUNCH = new Set(['KeyF']);
+const SAVE = new Set(['KeyX']);
 
 export function createInput(canvas) {
   const held = new Set();
@@ -34,6 +38,10 @@ export function createInput(canvas) {
       if (!event.repeat) actions |= ACTION_RESET;
     } else if (HORN.has(event.code)) {
       if (!event.repeat) actions |= ACTION_HORN;
+    } else if (PUNCH.has(event.code)) {
+      if (!event.repeat) actions |= ACTION_PUNCH;
+    } else if (SAVE.has(event.code)) {
+      if (!event.repeat) actions |= ACTION_SAVE;
     } else if (
       FORWARD.has(event.code) || BACK.has(event.code) || LEFT.has(event.code) ||
       RIGHT.has(event.code) || RUN.has(event.code) || BRAKE.has(event.code)
@@ -48,8 +56,11 @@ export function createInput(canvas) {
     held.delete(event.code);
   });
   // A key released while the tab is hidden never sends keyup: let go on blur.
+  // A one-shot press queued just before the blur is dropped too, so it can
+  // never fire minutes later when the player comes back to the tab.
   window.addEventListener('blur', () => {
     held.clear();
+    actions = 0;
     dragging = false;
   });
 

@@ -12,18 +12,30 @@ export function createHud() {
   const speedLabelEl = document.getElementById('speed-label');
   const promptEl = document.getElementById('prompt');
   const bannerEl = document.getElementById('banner');
+  const saveToastEl = document.getElementById('save-toast');
   const startEl = document.getElementById('start-screen');
   const playButton = document.getElementById('play-button');
+  const continueButton = document.getElementById('continue-button');
 
   let onPlay = null;
+  let onContinue = null;
+  let saveToastTimer = 0;
   playButton.addEventListener('click', () => {
     if (onPlay) onPlay();
   });
+  continueButton.addEventListener('click', () => {
+    if (onContinue) onContinue();
+  });
 
   return {
-    /** Show the title screen; `onPlay` runs when the player clicks Play. */
-    showStart(onPlayCallback) {
+    /**
+     * Show the title screen; `onPlay` runs on PLAY, `onContinue` on
+     * CONTINUE, which is only offered when a save exists to pick up.
+     */
+    showStart(onPlayCallback, onContinueCallback, hasSave) {
       onPlay = onPlayCallback;
+      onContinue = onContinueCallback;
+      continueButton.classList.toggle('hidden', !hasSave);
       startEl.classList.remove('hidden');
       document.getElementById('start-title').textContent = GAME_TITLE;
       document.getElementById('start-city').textContent = `Welcome to ${CITY_NAME}`;
@@ -36,8 +48,9 @@ export function createHud() {
     },
     /** Wanted stars: filled ★ for the level, empty ☆ up to three. Hidden at zero. */
     setWanted(stars) {
-      wantedEl.textContent = stars > 0 ? '★'.repeat(stars) + '☆'.repeat(3 - stars) : '';
-      wantedEl.classList.toggle('hidden', stars === 0);
+      const level = Math.max(0, Math.min(3, stars));
+      wantedEl.textContent = level > 0 ? '★'.repeat(level) + '☆'.repeat(3 - level) : '';
+      wantedEl.classList.toggle('hidden', level === 0);
     },
     /** Speed in km/h; while on foot the label reads ON FOOT. */
     setSpeed(kmh, driving) {
@@ -65,6 +78,18 @@ export function createHud() {
     hideBanner() {
       bannerEl.classList.add('hidden');
       bannerEl.classList.remove('fail');
+      bannerEl.textContent = '';
+    },
+    /** A short-lived "Progress saved" note; autosaves stay silent. */
+    showSaveToast(text) {
+      saveToastEl.textContent = text;
+      saveToastEl.classList.remove('hidden');
+      window.clearTimeout(saveToastTimer);
+      saveToastTimer = window.setTimeout(() => saveToastEl.classList.add('hidden'), 1800);
+    },
+    hideSaveToast() {
+      window.clearTimeout(saveToastTimer);
+      saveToastEl.classList.add('hidden');
     },
   };
 }

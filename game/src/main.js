@@ -15,22 +15,23 @@
 import * as THREE from 'three';
 import {
   BUSTED_DISTANCE, BUSTED_FOOT_SECONDS, BUSTED_HOLD_SECONDS, CAR_TOP_SPEED,
-  CITY_NAME, DEFAULT_SEED, GAME_TITLE, MARINA, MARINA_RADIUS,
-  MISSION_CLEAN_TEXT, MISSION_DONE_TEXT, MISSION_TEXT, MISSION_WANTED_TEXT,
-  POLICE_RAM_DISTANCE, POLICE_SPAWN_DISTANCE, QUALITY_SAMPLE_FRAMES,
-  QUALITY_SLOW_FRAME_MS, SHADOW_MAP_HIGH, SHADOW_MAP_LOW, SKY_COLOR, SUN_COLOR,
+  CITY_NAME, COMBAT_ARC, COMBAT_RANGE, COMBAT_SWING_SECONDS, DEFAULT_SEED,
+  GAME_TITLE, MARINA, MARINA_RADIUS, MISSION_CLEAN_TEXT, MISSION_DONE_TEXT,
+  MISSION_TEXT, MISSION_WANTED_TEXT, POLICE_RAM_DISTANCE, POLICE_SPAWN_DISTANCE,
+  QUALITY_SAMPLE_FRAMES, QUALITY_SLOW_FRAME_MS, SAVE_AUTOSAVE_SECONDS, SAVE_KEY,
+  SAVE_VERSION, SHADOW_MAP_HIGH, SHADOW_MAP_LOW, SKY_COLOR, SUN_COLOR,
   WANTED_ESCAPE_DISTANCE, WANTED_ESCAPE_SECONDS, WANTED_MAX_STARS, WANTED_STAR_SECONDS,
 } from './config.js';
 import { makeRng } from './rng.js';
-import { buildCity } from './city.js';
-import { createPedestrians, stepPedestrians } from './character.js';
+import { buildCity, isBlocked, nearestRoadPoint } from './city.js';
+import { createPedestrians, shovePedestrian, stepPedestrians } from './character.js';
 import { createPlayer } from './player.js';
 import {
-  createPolice, createTraffic, nearestCar, policeSpawnPoint, removePolice,
+  carIndex, createPolice, createTraffic, nearestCar, policeSpawnPoint, removePolice,
   stepDrivenCar, stepPolice, stepTraffic,
 } from './vehicles.js';
 import { createCamera } from './camera.js';
-import { ACTION_ENTER, ACTION_HORN, ACTION_RESET, createInput } from './input.js';
+import { ACTION_ENTER, ACTION_HORN, ACTION_PUNCH, ACTION_RESET, ACTION_SAVE, createInput } from './input.js';
 import { createHud } from './hud.js';
 import { createMinimap } from './minimap.js';
 import { createAudio } from './audio.js';
@@ -103,6 +104,15 @@ const hud = createHud();
 const minimap = createMinimap();
 const audio = createAudio();
 
+// The shove's impact flash: a small white sphere that blooms and fades on
+// the simulation clock at the pedestrian that was hit.
+const punchFlashMesh = new THREE.Mesh(
+  new THREE.SphereGeometry(0.35, 12, 8),
+  new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0 }),
+);
+punchFlashMesh.visible = false;
+scene.add(punchFlashMesh);
+
 const game = {
   player,
   cars,
@@ -122,13 +132,18 @@ const game = {
   bustedTimer: 0,
   ramCount: 0,
   simTime: 0,
+  saveTimer: 0,
+  punchFlashTimer: 0,
   quality: qualityLow ? 'low' : 'high',
   qualityChecked: qualityLow,
 
   startPlaying() {
     this.screen = 'playing';
     hud.hideStart();
-    hud.setObjective(OBJECTIVE_TEXT);
+    // A continued run keeps its own objective: a completed getaway still
+    // reads complete, a wanted one still reads wanted, a fresh one clean.
+    if (this.mission === 'complete') hud.setObjective(MISSION_DONE_TEXT);
+    else hud.setObjective(this.wanted > 0 ? MISSION_WANTED_TEXT : OBJECTIVE_TEXT);
     audio.unlock();
   },
 
@@ -213,7 +228,12 @@ const game = {
     audio.busted();
   },
 
-  /** Full run reset: player home, no wanted, no police, mission live again. */
+  /**
+   * Full run reset: player home, no wanted, no police, mission live again.
+   * Everything the last run left behind goes with it — the shove's flash,
+   * the camera shake and kick, the siren, the save toast — so no stale
+   * police, wanted stars or HUD state survives into the next run.
+   */
   resetRun() {
     if (this.driving) {
       this.driving.driven = false;
@@ -230,10 +250,212 @@ const game = {
     this.escapeTimer = 0;
     this.bustedTimer = 0;
     this.ramCount = 0;
+    this.saveTimer = 0;
+    this.punchFlashTimer = 0;
+    punchFlashMesh.visible = false;
+    this.camera.clearEffects();
     hud.setWanted(0);
     hud.setObjective(MISSION_TEXT);
     hud.hideBanner();
+    hud.hideSaveToast();
+    audio.setSiren(false, 0, this.simTime);
     camera.state.yaw = player.state.heading + Math.PI;
+  },
+
+  /** Is there a save from an earlier session to continue from? */
+  hasSave() {
+    try {
+      const raw = window.localStorage.getItem(SAVE_KEY);
+      if (!raw) return false;
+      const data = JSON.parse(raw);
+      return data && data.version === SAVE_VERSION && data.seed === seed;
+    } catch {
+      return false;
+    }
+  },
+
+  /**
+   * Write the run to localStorage: mission state, wanted level, the
+   * player's spot and the driven car, the sim clock and the runtime RNG
+   * state. No wall clock anywhere, so loading it back is deterministic.
+   * Autosaves stay silent; a manual save shows the toast and a blip.
+   */
+  saveRun(silent = false) {
+    if (this.screen !== 'playing') return false;
+    if (this.mission === 'busted') return false;
+    const drivingIndex = this.driving ? carIndex(this.cars, this.driving) : -1;
+    const data = {
+      version: SAVE_VERSION,
+      seed,
+      mission: this.mission,
+      objectiveDone: this.objectiveDone,
+      wanted: this.wanted,
+      wantedTimer: this.wantedTimer,
+      escapeTimer: this.escapeTimer,
+      simTime: this.simTime,
+      rngState: runtimeRng.state(),
+      player: { x: this.player.state.x, z: this.player.state.z, heading: this.player.state.heading },
+      drivingIndex,
+      car: this.driving
+        ? { x: this.driving.x, z: this.driving.z, heading: this.driving.heading }
+        : null,
+    };
+    try {
+      window.localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+    } catch {
+      return false;
+    }
+    if (!silent) {
+      hud.showSaveToast('Progress saved ✓');
+      audio.saved();
+    }
+    return true;
+  },
+
+  /**
+   * Load the save back over a clean reset: the player and the car go back
+   * where they were, the wanted level returns with its cruisers, and the
+   * runtime RNG resumes where it stopped. The car comes back parked
+   * (speed 0) — the player pulls away again with W. Returns false when
+   * there is no usable save.
+   */
+  loadRun() {
+    let data = null;
+    try {
+      data = JSON.parse(window.localStorage.getItem(SAVE_KEY) ?? 'null');
+    } catch {
+      data = null;
+    }
+    if (!data || data.version !== SAVE_VERSION || data.seed !== seed || !data.player) return false;
+    const carIndexValid = data.drivingIndex >= 0 && data.drivingIndex < this.cars.length;
+    this.resetRun();
+    this.simTime = data.simTime || 0;
+    runtimeRng.restore(data.rngState || 0);
+    // A saved spot that drifted into a building snaps to the nearest road.
+    const spot = isBlocked(this.colliders, data.player.x, data.player.z, 0.6)
+      ? nearestRoadPoint(data.player.x, data.player.z)
+      : { x: data.player.x, z: data.player.z };
+    player.teleport(spot.x, spot.z, data.player.heading);
+    this.mission = data.mission;
+    this.objectiveDone = Boolean(data.objectiveDone);
+    this.wanted = data.wanted || 0;
+    this.wantedTimer = data.wantedTimer || 0;
+    this.escapeTimer = data.escapeTimer || 0;
+    if (carIndexValid && data.car) {
+      const car = this.cars[data.drivingIndex];
+      car.x = data.car.x;
+      car.z = data.car.z;
+      car.heading = data.car.heading;
+      car.speed = 0;
+      car.mesh.position.set(car.x, 0, car.z);
+      car.mesh.rotation.y = car.heading;
+      this.driving = car;
+      car.driven = true;
+      player.hide();
+      camera.state.yaw = car.heading + Math.PI;
+    }
+    if (this.mission === 'complete') {
+      hud.setWanted(0);
+      hud.setObjective(MISSION_DONE_TEXT);
+    } else {
+      hud.setWanted(this.wanted);
+      hud.setObjective(this.wanted > 0 ? MISSION_WANTED_TEXT : MISSION_TEXT);
+      for (let i = 0; i < this.wanted; i += 1) this.spawnPolice(1);
+    }
+    return true;
+  },
+
+  /** Continue from the save, then play: the title screen's CONTINUE path. */
+  continueRun() {
+    this.loadRun();
+    this.startPlaying();
+  },
+
+  /**
+   * The on-foot shove (F key): the arm swings, and the nearest pedestrian
+   * inside the range and the facing arc is knocked back and runs. Driving,
+   * busted, or still on cooldown: nothing happens. Returns true on a hit.
+   */
+  punch() {
+    if (this.driving || this.mission === 'busted' || this.screen !== 'playing') return false;
+    if (!player.punch()) return false;
+    const px = this.player.state.x;
+    const pz = this.player.state.z;
+    const facing = this.player.state.heading;
+    let best = null;
+    let bestDistance = COMBAT_RANGE;
+    for (const ped of this.pedestrians) {
+      const dx = ped.x - px;
+      const dz = ped.z - pz;
+      const distance = Math.hypot(dx, dz);
+      if (distance > bestDistance) continue;
+      let arc = Math.atan2(dx, dz) - facing;
+      while (arc > Math.PI) arc -= Math.PI * 2;
+      while (arc < -Math.PI) arc += Math.PI * 2;
+      if (Math.abs(arc) > COMBAT_ARC) continue;
+      bestDistance = distance;
+      best = ped;
+    }
+    if (!best) return false;
+    shovePedestrian(best, px, pz);
+    punchFlashMesh.position.set(best.x, 1.2, best.z);
+    punchFlashMesh.visible = true;
+    punchFlashMesh.material.opacity = 0.9;
+    punchFlashMesh.scale.set(1, 1, 1);
+    this.punchFlashTimer = COMBAT_SWING_SECONDS;
+    this.camera.addKick(0.25);
+    audio.thwack();
+    return true;
+  },
+
+  /**
+   * The bust hold: a cruiser parked beside a near-stopped target holds the
+   * player. The hold drains instead of snapping to zero, so a ram shove
+   * that briefly opens the gap does not erase the whole hold.
+   */
+  checkBust(dt, nearest, targetSpeed) {
+    if (this.police.length > 0 && nearest < BUSTED_DISTANCE && targetSpeed < 1) {
+      this.bustedTimer += dt;
+      const hold = this.driving ? BUSTED_HOLD_SECONDS : BUSTED_FOOT_SECONDS;
+      if (this.bustedTimer >= hold) {
+        this.bust();
+        return true;
+      }
+    } else {
+      this.bustedTimer = Math.max(0, this.bustedTimer - dt * 2);
+    }
+    return false;
+  },
+
+  /**
+   * The wanted level over time: another star every WANTED_STAR_SECONDS up
+   * to the max, and a star drops after WANTED_ESCAPE_SECONDS with no
+   * cruiser near; at zero stars the cops leave and the run is clean.
+   */
+  checkWanted(dt, nearest) {
+    if (this.wanted <= 0) return;
+    this.wantedTimer += dt;
+    if (this.wantedTimer >= WANTED_STAR_SECONDS && this.wanted < WANTED_MAX_STARS) {
+      this.wantedTimer = 0;
+      this.wanted += 1;
+      this.spawnPolice(1);
+      hud.setWanted(this.wanted);
+      audio.wantedUp();
+    }
+    if (nearest > WANTED_ESCAPE_DISTANCE) {
+      this.escapeTimer += dt;
+      if (this.escapeTimer >= WANTED_ESCAPE_SECONDS) {
+        this.escapeTimer = 0;
+        this.wanted -= 1;
+        hud.setWanted(this.wanted);
+        if (this.wanted === 0) {
+          removePolice(scene, this.police);
+          hud.setObjective(MISSION_CLEAN_TEXT);
+        }
+      }
+    } else {
+      this.escapeTimer = 0;
+    }
   },
 
   /**
@@ -244,7 +466,7 @@ const game = {
    */
   stepSystems(dt) {
     this.simTime += dt;
-    stepPedestrians(this.pedestrians, [...this.cars, ...this.police], dt);
+    stepPedestrians(this.pedestrians, [...this.cars, ...this.police], dt, this.colliders);
     if (this.mission !== 'active') {
       audio.setSiren(false, 0, this.simTime);
       return;
@@ -269,45 +491,9 @@ const game = {
       }
     }
     // Busted: a cruiser parked beside a near-stopped target holds the player.
-    // The hold drains instead of snapping to zero, so a ram shove that
-    // briefly opens the gap does not erase the whole hold.
-    if (this.police.length > 0 && nearest < BUSTED_DISTANCE && targetSpeed < 1) {
-      this.bustedTimer += dt;
-      const hold = this.driving ? BUSTED_HOLD_SECONDS : BUSTED_FOOT_SECONDS;
-      if (this.bustedTimer >= hold) {
-        this.bust();
-        return;
-      }
-    } else {
-      this.bustedTimer = Math.max(0, this.bustedTimer - dt * 2);
-    }
-    // Wanted: another star every WANTED_STAR_SECONDS, up to the max.
-    if (this.wanted > 0) {
-      this.wantedTimer += dt;
-      if (this.wantedTimer >= WANTED_STAR_SECONDS && this.wanted < WANTED_MAX_STARS) {
-        this.wantedTimer = 0;
-        this.wanted += 1;
-        this.spawnPolice(1);
-        hud.setWanted(this.wanted);
-        audio.wantedUp();
-      }
-      // Escape: no cruiser near for WANTED_ESCAPE_SECONDS drops a star;
-      // at zero stars the cops leave and the run is a clean getaway.
-      if (nearest > WANTED_ESCAPE_DISTANCE) {
-        this.escapeTimer += dt;
-        if (this.escapeTimer >= WANTED_ESCAPE_SECONDS) {
-          this.escapeTimer = 0;
-          this.wanted -= 1;
-          hud.setWanted(this.wanted);
-          if (this.wanted === 0) {
-            removePolice(scene, this.police);
-            hud.setObjective(MISSION_CLEAN_TEXT);
-          }
-        }
-      } else {
-        this.escapeTimer = 0;
-      }
-    }
+    if (this.checkBust(dt, nearest, targetSpeed)) return;
+    // Wanted: stars rise with time, fall when every cruiser is shaken off.
+    this.checkWanted(dt, nearest);
     audio.setSiren(this.wanted > 0, nearest, this.simTime);
   },
 
@@ -329,6 +515,8 @@ function stepWorld(dt) {
 
   if (actions & ACTION_HORN) audio.honk();
   if (actions & ACTION_RESET) game.resetRun();
+  if (actions & ACTION_PUNCH) game.punch();
+  if (actions & ACTION_SAVE) game.saveRun();
   if (game.mission !== 'busted' && (actions & ACTION_ENTER)) {
     if (game.driving) game.exitCar();
     else {
@@ -357,15 +545,33 @@ function stepWorld(dt) {
   game.stepSystems(dt);
   audio.setEngine(game.driving ? Math.abs(game.driving.speed) / CAR_TOP_SPEED : 0);
 
+  // Autosave while the run is live: a reload mid-chase picks it up again.
+  if (game.screen === 'playing' && game.mission === 'active') {
+    game.saveTimer += dt;
+    if (game.saveTimer >= SAVE_AUTOSAVE_SECONDS) {
+      game.saveTimer = 0;
+      game.saveRun(true);
+    }
+  }
+
+  // The shove's flash blooms and fades on the simulation clock.
+  if (game.punchFlashTimer > 0) {
+    game.punchFlashTimer -= dt;
+    const left = Math.max(0, game.punchFlashTimer / COMBAT_SWING_SECONDS);
+    punchFlashMesh.scale.setScalar(1 + (1 - left) * 3);
+    punchFlashMesh.material.opacity = left * 0.9;
+    if (game.punchFlashTimer <= 0) punchFlashMesh.visible = false;
+  }
+
   const target = game.driving
     ? { x: game.driving.x, z: game.driving.z, driving: true }
     : { x: player.state.x, z: player.state.z, driving: false };
   camera.follow(target, game.driving ? 1 : 1.6, dt);
-  minimap.draw(game.driving ? game.driving : player.state, cars, Boolean(game.driving), game.police, game.pedestrians);
+  minimap.draw(game.driving ? game.driving : player.state, cars, Boolean(game.driving), game.police, game.pedestrians, game.simTime, game.mission === 'active');
 
-  // The beacon pulses once the objective is done.
+  // The beacon pulses on the simulation clock once the objective is done.
   city.beacon.material.emissiveIntensity = game.objectiveDone
-    ? 1.6 + Math.sin(performance.now() / 300) * 0.8
+    ? 1.6 + Math.sin(game.simTime * 2.1) * 0.8
     : 1.2;
 }
 
@@ -380,7 +586,7 @@ function runShot(name) {
   // Shots never run the loop, so paint the HUD state the loop would own.
   if (game.driving) hud.setSpeed(Math.abs(game.driving.speed) * 3.6, true);
   else hud.setSpeed(0, false);
-  minimap.draw(game.driving ? game.driving : player.state, cars, Boolean(game.driving), game.police, game.pedestrians);
+  minimap.draw(game.driving ? game.driving : player.state, cars, Boolean(game.driving), game.police, game.pedestrians, game.simTime, game.mission === 'active');
   let painted = 0;
   function paint() {
     renderFrame();
@@ -392,7 +598,7 @@ function runShot(name) {
 }
 
 function runGame() {
-  hud.showStart(() => game.startPlaying());
+  hud.showStart(() => game.startPlaying(), () => game.continueRun(), game.hasSave());
   hud.setObjective(OBJECTIVE_TEXT);
   document.title = `${GAME_TITLE} — ${CITY_NAME}`;
   let accumulator = 0;
@@ -418,7 +624,7 @@ function runGame() {
       stepTraffic(cars, STEP);
       game.stepSystems(STEP);
       camera.follow({ x: player.state.x, z: player.state.z, driving: false }, 1.6, STEP);
-      minimap.draw(player.state, cars, false, game.police, game.pedestrians);
+      minimap.draw(player.state, cars, false, game.police, game.pedestrians, game.simTime, false);
     }
     if (!game.qualityChecked && game.screen === 'playing') {
       frameCount += 1;

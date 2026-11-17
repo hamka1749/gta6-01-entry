@@ -303,15 +303,6 @@ export function sidewalkLoop(bx, bz) {
  * cruiser spawned here starts on a road with a clear run at the player
  * instead of across a block of buildings.
  */
-/**
- * A point on the target's own road, about `distance` metres behind
- * (x, z) along `heading`. The heading's bigger component says which way
- * the road runs; the cross-road coordinate snaps to the road line nearest
- * the target — not the nearest line to the stepped-back point, which could
- * shove the spawn onto a different road up to 20 m further away. A police
- * cruiser spawned here starts on a road with a clear run at the player
- * instead of across a block of buildings.
- */
 export function roadPointBehind(x, z, heading, distance) {
   // Mostly east-west travel means the target runs along a horizontal road
   // (constant z); mostly north-south means a vertical one (constant x).
@@ -352,5 +343,8 @@ export function nearestRoadPoint(x, z) {
       horizontal = line;
     }
   }
-  return verticalGap <= horizontalGap ? { x: vertical, z } : { x, z: horizontal };
+  // The free coordinate stays on the island too: a tampered save can hold
+  // a wild position, and the snapped point must still be a playable one.
+  const clamp = (v) => Math.max(-CITY_HALF + 8, Math.min(CITY_HALF - 8, v));
+  return verticalGap <= horizontalGap ? { x: vertical, z: clamp(z) } : { x: clamp(x), z: horizontal };
 }

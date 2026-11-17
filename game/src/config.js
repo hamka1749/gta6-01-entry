@@ -69,7 +69,9 @@ export const SAVE_AUTOSAVE_SECONDS = 5; // seconds of play between autosaves
 export const COMBAT_RANGE = 2.2; // metres, from the player's chest
 export const COMBAT_ARC = 1.1; // radians either side of the facing direction
 export const COMBAT_COOLDOWN = 0.8; // seconds between shoves
+export const COMBAT_SWING_SECONDS = 0.35; // how long the shove animation lasts
 export const COMBAT_KNOCKBACK = 6; // m/s shove velocity given to the target
+export const COMBAT_KNOCKBACK_DECAY = 3; // per second: the shove's push fades out
 export const COMBAT_FLEE_SECONDS = 3; // how long a shoved pedestrian runs
 
 // Pedestrians: islanders strolling the sidewalks who scatter from cars.

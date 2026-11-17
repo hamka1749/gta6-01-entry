@@ -8,7 +8,7 @@
 //   end   — the Marina objective complete, player beside the car on the pier.
 
 import { CAMERA_DISTANCE, MARINA, MISSION_WANTED_TEXT } from './config.js';
-import { nearestCar, stepDrivenCar, stepTraffic } from './vehicles.js';
+import { nearestCar, policeSpawnPoint, stepDrivenCar, stepTraffic } from './vehicles.js';
 
 const STEP = 1 / 60;
 const PLAY_STEPS = 240; // four seconds of driving, fixed
@@ -24,8 +24,8 @@ function driveForward(game, steps) {
   }
 }
 
-/** Walk the player to the nearest parked car and get in it. */
-function enterNearestCar(game) {
+/** The parked car nearest the player, or null when there is none. */
+function nearestParkedCar(game) {
   let parked = null;
   let parkedDistance = Infinity;
   for (const car of game.cars) {
@@ -36,6 +36,12 @@ function enterNearestCar(game) {
       parked = car;
     }
   }
+  return parked;
+}
+
+/** Walk the player to the nearest parked car and get in it. */
+function enterNearestCar(game) {
+  const parked = nearestParkedCar(game);
   if (!parked) return;
   game.player.teleport(parked.x + 2, parked.z, parked.heading);
   const car = nearestCar(game.cars, game.player.state.x, game.player.state.z);
@@ -64,15 +70,12 @@ export function stageShot(name, game) {
     enterNearestCar(game);
     if (game.driving) {
       // A two-star chase for the shot: the steal already brought one
-      // cruiser; a second one joins right behind the getaway car, rolling.
+      // cruiser; a second one joins from the same road behind the getaway
+      // car, rolling — spawned the way the game spawns them, not placed.
       game.wanted = 2;
       game.hud.setWanted(2);
-      game.addPoliceAt(
-        game.driving.x - Math.sin(game.driving.heading) * 16,
-        game.driving.z - Math.cos(game.driving.heading) * 16,
-        game.driving.heading,
-        18,
-      );
+      const behind = policeSpawnPoint(game.driving, 16);
+      game.addPoliceAt(behind.x, behind.z, game.driving.heading, 18);
       driveForward(game, CHASE_STEPS);
       game.hud.setObjective(MISSION_WANTED_TEXT);
       // Side view: the getaway car ahead, the cruisers trailing behind it.
@@ -87,16 +90,7 @@ export function stageShot(name, game) {
   if (name === 'end') {
     game.startPlaying();
     // Park a car at the Marina and stand the player beside it on the pier.
-    let parked = null;
-    let parkedDistance = Infinity;
-    for (const car of game.cars) {
-      if (car.traffic) continue;
-      const distance = Math.hypot(car.x - game.player.state.x, car.z - game.player.state.z);
-      if (distance < parkedDistance) {
-        parkedDistance = distance;
-        parked = car;
-      }
-    }
+    const parked = nearestParkedCar(game);
     if (parked) {
       parked.x = MARINA.x + 4;
       parked.z = MARINA.z - 6;

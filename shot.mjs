@@ -324,7 +324,7 @@ async function playtest(browser) {
   await stepSim(4);
   const afterBusted = await chaseState(page);
   check('held by police = busted', afterBusted.mission === 'busted' && !afterBusted.bannerHidden, JSON.stringify(afterBusted));
-  await page.screenshot({ path: join(REPO, 'playtest-busted.jpg'), type: 'jpeg', quality: 80 });
+  await page.screenshot({ path: join(REPO, 'playtest', 'busted.jpg'), type: 'jpeg', quality: 80 });
 
   // Stuck mechanic: wedge the cruiser inside a building; after 2 s it
   // must be sitting still on its stuck hold.
@@ -428,6 +428,16 @@ async function cp3test(browser) {
   });
   await stepSim(0.5);
   check('complete before restart check', (await chaseState(page)).mission === 'complete');
+  // A completed run can be saved and continued: after a reload, Continue
+  // must bring the getaway back as complete, not as a fresh steal-a-car run.
+  await page.keyboard.press('KeyX');
+  await sleep(300);
+  await page.reload({ waitUntil: 'load' });
+  await sleep(1200);
+  await page.click('#continue-button');
+  await sleep(500);
+  const continued = await chaseState(page);
+  check('Continue after complete keeps the getaway complete', continued.mission === 'complete' && continued.objective === '★ Getaway complete — Palmera Keys is yours to explore.', JSON.stringify(continued));
   await page.keyboard.press('KeyR');
   await stepSim(0.5);
   let reset = await chaseState(page);
@@ -532,6 +542,9 @@ async function main() {
     process.exit(1);
   }
   console.log('server up on', BASE);
+  // Play-test captures go under playtest/ (gitignored) so the repo root
+  // never collects stray screenshots from a test run again.
+  mkdirSync(join(REPO, 'playtest'), { recursive: true });
   const browser = await chromium.launch({ executablePath: CHROME, args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--no-sandbox'] });
   try {
     if (modes.includes('shots')) await takeShots(browser);

@@ -252,7 +252,11 @@ export function createPolice(scene, x, z, heading) {
   return {
     mesh: mesh.group, wheels: mesh.wheels, lightRed: mesh.lightRed, lightBlue: mesh.lightBlue,
     x, z, heading, speed: 0, driven: false, traffic: false, loop: null, loopDistance: 0,
-    police: true, lightPhase: 0, stuckTimer: 0, stuckHold: 0, ramCooldown: 0,
+    // The light bar's flash phase is staggered by spawn position, so two
+    // cruisers in one chase blink out of step instead of in unison. It is
+    // derived from the spawn point, never the wall clock, so the chase
+    // screenshot stages the same frame every time.
+    police: true, lightPhase: (Math.abs(x * 0.37 + z * 0.53) % 0.7), stuckTimer: 0, stuckHold: 0, ramCooldown: 0,
     lastX: x, lastZ: z, stillTimer: 0,
   };
 }

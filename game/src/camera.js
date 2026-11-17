@@ -20,6 +20,8 @@ export function createCamera(renderer) {
   // wall clock, so a staged screenshot renders the same frame every time.
   let shake = 0;
   let shakeTime = 0;
+  // A shove's kick: a short downward dip of the camera, same clock.
+  let kick = 0;
 
   function updateSize() {
     const width = renderer.domElement.clientWidth || window.innerWidth;
@@ -36,6 +38,16 @@ export function createCamera(renderer) {
     /** A jolt from a police ram: `amount` 0..1, decays over about a second. */
     addShake(amount) {
       shake = Math.min(1, shake + amount);
+    },
+    /** A shove's dip: the camera drops a little and comes back, on the sim clock. */
+    addKick(amount) {
+      kick = Math.min(0.5, kick + amount);
+    },
+    /** Clear shake and kick (a run reset starts the camera clean). */
+    clearEffects() {
+      shake = 0;
+      shakeTime = 0;
+      kick = 0;
     },
     /** Apply a mouse drag: orbit yaw and pitch, wheel zooms. */
     applyDrag(drag) {
@@ -65,6 +77,9 @@ export function createCamera(renderer) {
         camera.position.x += Math.sin(shakeTime * 61.7) * shake * 0.3;
         camera.position.y += Math.sin(shakeTime * 47.3 + 1.7) * shake * 0.2;
       }
+      // A shove's kick dips the camera down and lets it back up.
+      kick = Math.max(0, kick - dt * 3);
+      camera.position.y -= kick * 0.4;
       camera.lookAt(target.x, targetHeight + 1.0, target.z);
     },
     /** Snap the camera to its wanted spot (used by screenshot poses). */

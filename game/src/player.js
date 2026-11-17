@@ -3,7 +3,7 @@
 // the direction of travel. Buildings stop the player: each axis is tested
 // separately, so the player slides along walls instead of sticking to them.
 
-import { PLAYER_RADIUS, RUN_SPEED, SPAWN, WALK_SPEED } from './config.js';
+import { COMBAT_COOLDOWN, COMBAT_SWING_SECONDS, PLAYER_RADIUS, RUN_SPEED, SPAWN, WALK_SPEED } from './config.js';
 import { isBlocked } from './city.js';
 import { buildCharacter } from './character.js';
 
@@ -18,6 +18,9 @@ export function createPlayer(scene) {
     speed: 0,
     moving: false,
     walkPhase: 0,
+    // On-foot combat: the shove's arm swing and the wait until the next one.
+    punchTimer: 0,
+    punchCooldown: 0,
     mesh: parts.group,
   };
 
@@ -29,13 +32,22 @@ export function createPlayer(scene) {
     parts.leftLeg.rotation.x = swing;
     parts.rightLeg.rotation.x = -swing;
     parts.leftArm.rotation.x = -swing * 0.7;
-    parts.rightArm.rotation.x = swing * 0.7;
+    // A shove overrides the right arm: it swings forward and back over the
+    // swing's length, whatever the legs are doing.
+    if (state.punchTimer > 0) {
+      const phase = state.punchTimer / COMBAT_SWING_SECONDS;
+      parts.rightArm.rotation.x = -1.9 * Math.sin(phase * Math.PI);
+    } else {
+      parts.rightArm.rotation.x = swing * 0.7;
+    }
   }
 
   return {
     state,
     /** Step the player for `dt` seconds. `move` is input, `cameraYaw` is where the camera looks. */
     step(dt, move, cameraYaw, colliders) {
+      if (state.punchTimer > 0) state.punchTimer = Math.max(0, state.punchTimer - dt);
+      if (state.punchCooldown > 0) state.punchCooldown = Math.max(0, state.punchCooldown - dt);
       const speed = move.run ? RUN_SPEED : WALK_SPEED;
       const forwardX = -Math.sin(cameraYaw);
       const forwardZ = -Math.cos(cameraYaw);
@@ -71,6 +83,24 @@ export function createPlayer(scene) {
     reset() {
       this.teleport(SPAWN.x, SPAWN.z, SPAWN.heading);
       this.lowerArms();
+      // A reset mid-stride leaves no stale speed behind for the chase
+      // systems to read before the next step runs.
+      state.speed = 0;
+      state.moving = false;
+      state.punchTimer = 0;
+      state.punchCooldown = 0;
+    },
+    /**
+     * Start a shove: the arm swings and the cooldown starts. Returns false
+     * while the cooldown is still running, so a second shove inside it
+     * does nothing — the timer is left untouched.
+     */
+    punch() {
+      if (state.punchCooldown > 0) return false;
+      state.punchTimer = COMBAT_SWING_SECONDS;
+      state.punchCooldown = COMBAT_COOLDOWN;
+      applyPose();
+      return true;
     },
     show() {
       parts.group.visible = true;

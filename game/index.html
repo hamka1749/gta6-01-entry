@@ -38,6 +38,9 @@
   #play-button { display: block; margin: 22px auto 0; font-size: 20px; font-weight: 800; letter-spacing: 1px; color: #1d2b36; background: #ffd94d; border: none; border-radius: 10px; padding: 14px 42px; cursor: pointer; box-shadow: 0 4px 0 #b3541e; }
   #play-button:hover { background: #ffe27a; }
   #play-button:active { transform: translateY(2px); box-shadow: 0 2px 0 #b3541e; }
+  #continue-button { display: block; margin: 12px auto 0; font-size: 16px; font-weight: 700; letter-spacing: 1px; color: #ffd94d; background: transparent; border: 2px solid #ffd94d; border-radius: 10px; padding: 10px 32px; cursor: pointer; }
+  #continue-button:hover { background: rgba(255, 217, 77, .15); }
+  #save-toast { position: absolute; left: 50%; bottom: 12%; transform: translateX(-50%); font-size: 15px; font-weight: 700; background: rgba(10, 30, 45, .7); padding: 8px 16px; border-radius: 8px; border: 1px solid #7fc4bd; }
 </style>
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.min.js" } }
@@ -56,10 +59,12 @@
   <div id="speed"><span id="speed-value">—</span><div id="speed-label">ON FOOT</div></div>
   <div id="controls">
     <b>W A S D</b> move &nbsp; <b>Shift</b> run &nbsp; <b>Mouse drag</b> camera<br>
-    <b>E</b> steal / leave a car &nbsp; <b>Space</b> brake &nbsp; <b>H</b> horn &nbsp; <b>R</b> reset
+    <b>E</b> steal / leave a car &nbsp; <b>Space</b> brake &nbsp; <b>H</b> horn &nbsp; <b>R</b> reset<br>
+    <b>F</b> shove (on foot) &nbsp; <b>X</b> save progress
   </div>
   <div id="prompt" class="hidden"></div>
   <div id="banner" class="hidden"></div>
+  <div id="save-toast" class="hidden" role="status"></div>
 </div>
 
 <div id="start-screen">
@@ -72,9 +77,11 @@
     <div id="start-controls">
       <b>W A S D</b> — walk / drive &nbsp;·&nbsp; <b>Shift</b> — run<br>
       <b>Mouse drag</b> — look around &nbsp;·&nbsp; <b>Wheel</b> — zoom<br>
-      <b>E</b> — steal / leave a car &nbsp;·&nbsp; <b>Space</b> — brake &nbsp;·&nbsp; <b>H</b> — horn &nbsp;·&nbsp; <b>R</b> — reset
+      <b>E</b> — steal / leave a car &nbsp;·&nbsp; <b>Space</b> — brake &nbsp;·&nbsp; <b>H</b> — horn &nbsp;·&nbsp; <b>R</b> — reset<br>
+      <b>F</b> — shove a pedestrian (on foot) &nbsp;·&nbsp; <b>X</b> — save progress
     </div>
-    <button id="play-button" type="button">▶ &nbsp;PLAY</button>
+    <button id="play-button" type="button" aria-label="Play Sunset Keys">▶ &nbsp;PLAY</button>
+    <button id="continue-button" type="button" class="hidden" aria-label="Continue your saved run">↻ &nbsp;CONTINUE — PICK UP WHERE YOU LEFT OFF</button>
   </div>
 </div>
 

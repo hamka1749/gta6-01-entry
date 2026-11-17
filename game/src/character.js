@@ -6,11 +6,11 @@
 
 import * as THREE from 'three';
 import {
-  BLOCK_CENTRES, sidewalkLoop,
+  BLOCK_CENTRES, isBlocked, sidewalkLoop,
 } from './city.js';
 import {
-  PEDESTRIAN_COUNT, PEDESTRIAN_FLEE_DISTANCE, PEDESTRIAN_FLEE_SECONDS,
-  PEDESTRIAN_FLEE_SPEED, PEDESTRIAN_WALK_SPEED,
+  COMBAT_FLEE_SECONDS, COMBAT_KNOCKBACK, COMBAT_KNOCKBACK_DECAY, PEDESTRIAN_COUNT, PEDESTRIAN_FLEE_DISTANCE,
+  PEDESTRIAN_FLEE_SECONDS, PEDESTRIAN_FLEE_SPEED, PEDESTRIAN_WALK_SPEED,
 } from './config.js';
 import { chance, pick } from './rng.js';
 
@@ -113,13 +113,31 @@ export function createPedestrians(scene, rng) {
       walkPhase: rng() * Math.PI * 2,
       fleeTimer: 0,
       fleeHeading: 0,
+      // A shove's knockback velocity, decaying to nothing over a second.
+      knockX: 0,
+      knockZ: 0,
     });
   }
   return pedestrians;
 }
 
+/**
+ * Shove a pedestrian away from (fromX, fromZ): a decaying knockback shove
+ * plus a run in the same direction. The rule is simple and visible — a
+ * shoved islander staggers back and flees, and nothing else happens.
+ */
+export function shovePedestrian(ped, fromX, fromZ) {
+  const dx = ped.x - fromX;
+  const dz = ped.z - fromZ;
+  const distance = Math.hypot(dx, dz) || 1;
+  ped.knockX = (dx / distance) * COMBAT_KNOCKBACK;
+  ped.knockZ = (dz / distance) * COMBAT_KNOCKBACK;
+  ped.fleeTimer = COMBAT_FLEE_SECONDS;
+  ped.fleeHeading = Math.atan2(dx, dz);
+}
+
 /** Step every pedestrian for `dt` seconds. `cars` is every car on the road. */
-export function stepPedestrians(pedestrians, cars, dt) {
+export function stepPedestrians(pedestrians, cars, dt, colliders = []) {
   for (const ped of pedestrians) {
     // A car close by sends the pedestrian running away from it.
     let threat = null;
@@ -158,6 +176,20 @@ export function stepPedestrians(pedestrians, cars, dt) {
     ped.heading += diff * Math.min(1, dt * 8);
     ped.x += Math.sin(ped.heading) * speed * dt;
     ped.z += Math.cos(ped.heading) * speed * dt;
+    // A shove's knockback rides on top of the walk and decays away. It
+    // stops at walls, one axis at a time like the player: a shoved
+    // pedestrian staggers back along the sidewalk, never through a building.
+    if (ped.knockX !== 0 || ped.knockZ !== 0) {
+      const knockStepX = ped.knockX * dt;
+      const knockStepZ = ped.knockZ * dt;
+      if (!isBlocked(colliders, ped.x + knockStepX, ped.z, 0.5)) ped.x += knockStepX;
+      else ped.knockX = 0;
+      if (!isBlocked(colliders, ped.x, ped.z + knockStepZ, 0.5)) ped.z += knockStepZ;
+      else ped.knockZ = 0;
+      const decay = Math.max(0, 1 - dt * COMBAT_KNOCKBACK_DECAY);
+      ped.knockX *= decay;
+      ped.knockZ *= decay;
+    }
     ped.walkPhase += dt * speed * 1.6;
     ped.group.position.set(ped.x, 0, ped.z);
     ped.group.rotation.y = ped.heading;
